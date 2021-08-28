@@ -1,0 +1,8 @@
+{
+  "name": "babel-plugin-autofix-extension",
+  "version": "1.0.1",
+  "main": "index.js",
+  "repository": "https://github.com/xiunen/babel-plugin-autofix-extension.git",
+  "author": "Xiunen <xiunen@163.com>",
+  "license": "MIT"
+}

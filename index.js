@@ -1,36 +1,74 @@
 const fs = require('fs');
 const path = require('path');
 
+const tryFiles = (dir, file, { extensions = ['js'], pathMap = [] }, autofix) => {
+  let relativePath;
+  let relativeFile;
+  for (let [regex, replacement] of pathMap) {
+    if (regex.test(file)) {
+      relativePath = replacement;
+      relativeFile = file.replace(regex, '');
+    }
+  }
+
+  for (let ext of extensions) {
+    let retFile = `${file}.${autofix}.${ext}`;
+    let filename = retFile;
+    if (relativeFile) {
+      filename = `${relativeFile}.${autofix}.${ext}`;
+    }
+
+    let fileDir = path.resolve(dir, filename);
+    if (relativePath) {
+      fileDir = path.resolve(relativePath, filename)
+    }
+
+    if (fs.existsSync(fileDir)) {
+      return retFile;
+    }
+
+    retFile = `${file}${file.endsWith('/') ? '' : '/'}index.${autofix}.${ext}`;
+    filename = retFile;
+    fileDir = path.resolve(dir, filename);
+    if (relativeFile) {
+      filename = `${relativeFile}/index.${autofix}.${ext}`;
+    }
+
+    fileDir = path.resolve(dir, filename);
+    if (relativePath) {
+      fileDir = path.resolve(relativePath, filename)
+    }
+
+    if (fs.existsSync(fileDir)) {
+      return retFile;
+    }
+  }
+  return file;
+}
+
+const createLog = (state, ...args) => {
+  if (!state.opts.debug) return;
+  console.log(...args);
+}
+
 module.exports = ({ types }) => {
   const autofix = process.env.autofix;
   return {
     name: 'autofix-extension',
     visitor: {
       ImportDeclaration: function (filePath, state) {
+        const log = createLog.bind(undefined, state);
+        log('[autofix] src', filePath.node.source.value);
+        if (!filePath.node.source.value.includes('/')) return;
         if (!autofix) return;
-        const { extensions = ['js'] } = state.opts;
         const dir = path.dirname(state.file.opts.filename);
-        const file = path.basename(state.file.opts.filename);
-        const parts = file.split('.');
-        const ext = parts[parts.length - 1];
-        if (!extensions.includes(ext)) return;
-        const prefix = parts.slice(0, parts.length - 1).join('.');
-        if (parts.length > 2) {
-          if (parts[parts.length - 2] === autofix) return;
-        }
-        const autofixFile = path.join(dir, [prefix, autofix, ext].join('.'));
-        const autofixIndexFile = path.join(dir, [autofix, ext].join('.'));
-        if (fs.existsSync(autofixFile)) {
-          filePath.replaceWith(types.importDeclaration(
-            filePath.node.specifiers,
-            types.stringLiteral(autofixFile)
-          ));
-        } else if (fs.existsSync(autofixIndexFile)) {
-          filePath.replaceWith(types.importDeclaration(
-            filePath.node.specifiers,
-            types.stringLiteral(autofixIndexFile)
-          ));
-        }
+        const triedFile = tryFiles(dir, filePath.node.source.value, state.opts, autofix);
+        if (triedFile === filePath.node.source.value) return;
+        log('[autofix] target', triedFile);
+        filePath.replaceWith(types.importDeclaration(
+          filePath.node.specifiers,
+          types.stringLiteral(triedFile)
+        ));
       }
     }
   }
